@@ -141,31 +141,28 @@ const TeacherDashboard = () => {
                     <span className="text-gray-300">{new Date(course.created_at).toLocaleDateString('vi-VN')}</span>
                   </div>
                 </div>
-                
-                <div className="flex flex-wrap gap-2 border-t border-gray-700 pt-4">
-                  <button 
-                    onClick={() => navigate(`/courses/${course.id}`)}
-                    className="flex-1 bg-teal-500/20 hover:bg-teal-500/30 text-teal-400 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    Xem
-                  </button>
-                  <button className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                    </svg>
-                    QL HV
-                  </button>
-                  <button className="flex-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Sửa
-                  </button>
-                </div>
+              <div className="flex gap-2">
+  <button 
+    onClick={() => navigate(`/courses/${course.id}`)} 
+    className="bg-blue-500 text-white px-3 py-1 rounded"
+  >
+    Xem
+  </button>
+  <button 
+    onClick={() => navigate(`/courses/${course.id}/manage-students`)} 
+    className="bg-green-500 text-white px-3 py-1 rounded"
+  >
+    QL HV
+  </button>
+  <button 
+    onClick={() => navigate(`/courses/${course.id}/edit`)} 
+    className="bg-yellow-500 text-black px-3 py-1 rounded"
+  >
+    Sửa
+  </button>
+</div>
+  
+
               </div>
             ))}
           </div>

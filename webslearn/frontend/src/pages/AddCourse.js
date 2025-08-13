@@ -13,16 +13,27 @@ const AddCourse = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!title || !classCode || !description || !maxStudents) {
+      alert('Vui lòng điền đầy đủ thông tin.');
+      return;
+    }
+
     try {
-      const res = await createCourse({
+      const payload = {
         title,
         description,
-        max_students: parseInt(maxStudents),
+        max_students: parseInt(maxStudents, 10),
         class_code: classCode
-      });
+      };
+
+      const res = await createCourse(payload);
+      console.log('Create course response:', res.data);
+
       alert('Course created successfully!');
-      // Lấy id từ backend trả về
-      const courseId = res.data.id;
+
+      // Đọc ID từ backend trả về
+      const courseId = res.data.id || res.data.course?.id;
       if (courseId) {
         navigate(`/courses/${courseId}/add-lesson`);
       } else {
@@ -30,7 +41,12 @@ const AddCourse = () => {
       }
     } catch (error) {
       console.error('Error creating course:', error);
-      alert('Failed to create course. Please try again.');
+
+      if (error.response) {
+        alert(`Failed to create course: ${error.response.data.message || 'Server error'}`);
+      } else {
+        alert('Failed to create course. Please check your connection and try again.');
+      }
     }
   };
 
@@ -76,10 +92,19 @@ const AddCourse = () => {
             />
           </div>
           <div className="space-x-4">
-            <button type="button" onClick={() => navigate(-1)} className="bg-gray-600 px-4 py-2 rounded">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="bg-gray-600 px-4 py-2 rounded"
+            >
               Cancel
             </button>
-            <button type="submit" className="bg-teal-400 text-black px-4 py-2 rounded">Create Course</button>
+            <button
+              type="submit"
+              className="bg-teal-400 text-black px-4 py-2 rounded"
+            >
+              Create Course
+            </button>
           </div>
         </form>
       </main>

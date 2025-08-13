@@ -172,9 +172,11 @@ const Login = () => {
           <h3 className="text-white font-medium mb-3">Tài khoản demo:</h3>
           <div className="space-y-2 text-sm">
             <div className="text-gray-300">
-              <span className="text-accent">Giảng viên:</span> teacher_demo@example.com / your_password
+              <span className="text-accent">Giảng viên:</span> teacher@demo.com / 123456
             </div>
-            {/* Nếu có tài khoản học viên, thêm ở đây */}
+            <div className="text-gray-300">
+              <span className="text-accent">Học viên:</span> student@demo.com / 123456
+            </div>
           </div>
         </div>
       </div>

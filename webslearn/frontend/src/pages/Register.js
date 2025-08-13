@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { login } from '../services/api';
+import { register } from '../services/api';
 
-const Login = () => {
+const Register = () => {
   const [formData, setFormData] = useState({
+    username: '',
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: '',
+    role: 'student'
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -16,30 +19,60 @@ const Login = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
-    // Clear error when user starts typing
-    if (error) setError('');
+    // Clear specific error when user starts typing
+    if (errors[e.target.name]) {
+      setErrors(prev => ({
+        ...prev,
+        [e.target.name]: ''
+      }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.username.trim()) {
+      newErrors.username = 'Họ và tên không được để trống';
+    } else if (formData.username.length < 2) {
+      newErrors.username = 'Họ và tên phải có ít nhất 2 ký tự';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email không được để trống';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email không hợp lệ';
+    }
+
+    if (!formData.password) {
+      newErrors.password = 'Mật khẩu không được để trống';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = 'Mật khẩu xác nhận không khớp';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) return;
+
     setLoading(true);
-    setError('');
 
     try {
-      const response = await login(formData);
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      
-      // Redirect based on user role
-      const user = response.data.user;
-      if (user.role === 'instructor') {
-        navigate('/dashboard/teacher');
-      } else {
-        navigate('/dashboard/student');
-      }
+      const { confirmPassword, ...submitData } = formData;
+      await register(submitData);
+      alert('Đăng ký thành công! Vui lòng đăng nhập.');
+      navigate('/login');
     } catch (error) {
-      console.error('Login failed:', error);
-      setError('Đăng nhập thất bại. Vui lòng kiểm tra thông tin đăng nhập.');
+      console.error('Registration failed:', error);
+      const errorMsg = error.response?.data?.error || 'Đăng ký thất bại. Vui lòng thử lại.';
+      setErrors({ general: errorMsg });
     } finally {
       setLoading(false);
     }
@@ -54,21 +87,47 @@ const Login = () => {
           <div className="text-center">
             <div className="mx-auto w-16 h-16 bg-accent rounded-full flex items-center justify-center mb-4">
               <svg className="w-8 h-8 text-header" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
               </svg>
             </div>
-            <h2 className="text-3xl font-bold text-white mb-2">Đăng Nhập</h2>
-            <p className="text-gray-400">Chào mừng bạn trở lại với WebsLearn</p>
+            <h2 className="text-3xl font-bold text-white mb-2">Đăng Ký</h2>
+            <p className="text-gray-400">Tạo tài khoản để bắt đầu học tập với WebsLearn</p>
           </div>
 
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            {error && (
+            {errors.general && (
               <div className="bg-danger/20 border border-danger text-danger px-4 py-3 rounded-lg text-sm">
-                {error}
+                {errors.general}
               </div>
             )}
 
             <div className="space-y-4">
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-2">
+                  Họ và tên
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    required
+                    value={formData.username}
+                    onChange={handleChange}
+                    className={`bg-main border ${errors.username ? 'border-danger' : 'border-custom'} text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all`}
+                    placeholder="Nhập họ và tên của bạn"
+                  />
+                </div>
+                {errors.username && (
+                  <p className="text-danger text-sm mt-1">{errors.username}</p>
+                )}
+              </div>
+
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
                   Email
@@ -86,10 +145,13 @@ const Login = () => {
                     required
                     value={formData.email}
                     onChange={handleChange}
-                    className="bg-main border border-custom text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                    className={`bg-main border ${errors.email ? 'border-danger' : 'border-custom'} text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all`}
                     placeholder="Nhập email của bạn"
                   />
                 </div>
+                {errors.email && (
+                  <p className="text-danger text-sm mt-1">{errors.email}</p>
+                )}
               </div>
 
               <div>
@@ -109,30 +171,62 @@ const Login = () => {
                     required
                     value={formData.password}
                     onChange={handleChange}
-                    className="bg-main border border-custom text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
-                    placeholder="Nhập mật khẩu của bạn"
+                    className={`bg-main border ${errors.password ? 'border-danger' : 'border-custom'} text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all`}
+                    placeholder="Tối thiểu 6 ký tự"
                   />
                 </div>
+                {errors.password && (
+                  <p className="text-danger text-sm mt-1">{errors.password}</p>
+                )}
               </div>
-            </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-teal-600 focus:ring-teal-500 border-gray-300 rounded"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-300">
-                  Ghi nhớ đăng nhập
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-2">
+                  Xác nhận mật khẩu
                 </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    required
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    className={`bg-main border ${errors.confirmPassword ? 'border-danger' : 'border-custom'} text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all`}
+                    placeholder="Nhập lại mật khẩu"
+                  />
+                </div>
+                {errors.confirmPassword && (
+                  <p className="text-danger text-sm mt-1">{errors.confirmPassword}</p>
+                )}
               </div>
 
-              <div className="text-sm">
-                <a href="mailto:support@webslearn.com" className="font-medium text-accent hover:text-accent/80 transition-colors">
-                  Quên mật khẩu?
-                </a>
+              <div>
+                <label htmlFor="role" className="block text-sm font-medium text-gray-300 mb-2">
+                  Vai trò
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <select
+                    id="role"
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    className="bg-main border border-custom text-white pl-10 pr-4 py-3 rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+                  >
+                    <option value="student">Học viên</option>
+                    <option value="instructor">Giảng viên</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -148,38 +242,39 @@ const Login = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Đang đăng nhập...
+                    Đang đăng ký...
                   </div>
                 ) : (
-                  'Đăng Nhập'
+                  'Đăng Ký'
                 )}
               </button>
             </div>
 
             <div className="text-center">
               <p className="text-gray-400">
-                Chưa có tài khoản?{' '}
-                <Link to="/register" className="font-medium text-accent hover:text-accent/80 transition-colors">
-                  Đăng ký ngay
+                Đã có tài khoản?{' '}
+                <Link to="/login" className="font-medium text-accent hover:text-accent/80 transition-colors">
+                  Đăng nhập ngay
                 </Link>
               </p>
             </div>
           </form>
         </div>
 
-        {/* Demo accounts info */}
-        <div className="bg-card/50 p-6 rounded-xl border border-custom">
-          <h3 className="text-white font-medium mb-3">Tài khoản demo:</h3>
-          <div className="space-y-2 text-sm">
-            <div className="text-gray-300">
-              <span className="text-accent">Giảng viên:</span> teacher_demo@example.com / your_password
-            </div>
-            {/* Nếu có tài khoản học viên, thêm ở đây */}
-          </div>
+        {/* Terms and Privacy */}
+        <div className="text-center text-sm text-gray-400">
+          Bằng việc đăng ký, bạn đồng ý với{' '}
+          <a href="mailto:support@webslearn.com" className="text-accent hover:text-accent/80 transition-colors">
+            Điều khoản sử dụng
+          </a>{' '}
+          và{' '}
+          <a href="mailto:support@webslearn.com" className="text-accent hover:text-accent/80 transition-colors">
+            Chính sách bảo mật
+          </a>
         </div>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default Register;

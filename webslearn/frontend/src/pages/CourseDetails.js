@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getCourseDetails, enrollCourse, getLessonsOfCourse } from '../services/api';
+import { getCourseDetails, enrollCourse, getLessonsOfCourse, getStudentCourses } from '../services/api';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -11,15 +11,39 @@ const CourseDetails = () => {
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState('');
+  const [isEnrolled, setIsEnrolled] = useState(false);
+  const [isInstructorOfCourse, setIsInstructorOfCourse] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchCourse = async () => {
+      setLoading(true);
+      setError('');
       try {
         const response = await getCourseDetails(id);
         setCourse(response.data);
+
         const lessonsRes = await getLessonsOfCourse(id);
-        setLessons(lessonsRes.data);
+        setLessons(lessonsRes.data || []);
+
+        // xác định user + trạng thái enroll
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (user) {
+          // nếu backend trả instructor_id hoặc instructor object
+          const instructorId = response.data.instructor_id ?? response.data.instructor?.id ?? null;
+          setIsInstructorOfCourse(user.role === 'instructor' && (user.id === instructorId || user.id === response.data.instructor_id));
+
+          if (user.role === 'student') {
+            try {
+              const enrolledRes = await getStudentCourses();
+              const enrolledList = enrolledRes.data || [];
+              setIsEnrolled(enrolledList.some(c => Number(c.id) === Number(id)));
+            } catch (err) {
+              // nếu không thể lấy danh sách enrolled thì giữ mặc định false
+              console.warn('Không thể kiểm tra trạng thái đăng ký của học viên.', err);
+            }
+          }
+        }
       } catch (error) {
         console.error('Error fetching course:', error);
         setError('Không thể tải thông tin khóa học');
@@ -36,6 +60,7 @@ const CourseDetails = () => {
     try {
       await enrollCourse(parseInt(id));
       alert('Đăng ký khóa học thành công!');
+      setIsEnrolled(true);
       navigate('/dashboard/student');
     } catch (error) {
       console.error('Error enrolling:', error);
@@ -81,6 +106,8 @@ const CourseDetails = () => {
 
   if (!course) return null;
 
+  const user = JSON.parse(localStorage.getItem('user'));
+
   return (
     <div className="bg-main text-white min-h-screen">
       <Header />
@@ -117,7 +144,7 @@ const CourseDetails = () => {
                   <div className="text-gray-400 text-sm">Số học viên tối đa</div>
                 </div>
                 <div className="bg-accent/20 rounded-lg p-4 text-center">
-                  <div className="text-accent text-2xl font-bold">12</div>
+                  <div className="text-accent text-2xl font-bold">{lessons.length}</div>
                   <div className="text-gray-400 text-sm">Bài học</div>
                 </div>
                 <div className="bg-success/20 rounded-lg p-4 text-center">
@@ -142,7 +169,7 @@ const CourseDetails = () => {
                   {lessons.length === 0 ? (
                     <div className="text-gray-400">Chưa có bài học nào cho khóa học này.</div>
                   ) : (
-                    lessons.map((lesson, idx) => (
+                    lessons.map((lesson) => (
                       <div key={lesson.id} className="bg-main/50 rounded-lg p-4 flex flex-col gap-2">
                         <h3 className="font-medium text-white">{lesson.title}</h3>
                         <p className="text-gray-400 text-sm">{lesson.description}</p>
@@ -185,28 +212,30 @@ const CourseDetails = () => {
                 </div>
               )}
 
-              <button 
-                onClick={handleEnroll}
-                disabled={enrolling}
-                className="w-full bg-accent hover:bg-accent/80 text-header px-6 py-4 rounded-lg font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed mb-4 flex items-center justify-center gap-2"
-              >
-                {enrolling ? (
-                  <>
-                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Đang đăng ký...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    Đăng ký khóa học
-                  </>
-                )}
-              </button>
+              {/* Buttons: quản lý / bắt đầu học / đăng ký */}
+              {user && user.role === 'instructor' && isInstructorOfCourse ? (
+                <button
+                  onClick={() => navigate(`/courses/${id}/manage-lessons`)}
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white px-6 py-4 rounded-lg font-semibold transition-all duration-200 shadow-lg mb-4"
+                >
+                  Quản lý khóa học
+                </button>
+              ) : user && user.role === 'student' && isEnrolled ? (
+                <button
+                  onClick={() => navigate(`/courses/${id}/learn`)}
+                  className="w-full bg-green-500 hover:bg-green-600 text-white px-6 py-4 rounded-lg font-semibold transition-all duration-200 shadow-lg mb-4"
+                >
+                  Bắt đầu học
+                </button>
+              ) : (
+                <button 
+                  onClick={handleEnroll}
+                  disabled={enrolling}
+                  className="w-full bg-accent hover:bg-accent/80 text-header px-6 py-4 rounded-lg font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed mb-4 flex items-center justify-center gap-2"
+                >
+                  {enrolling ? 'Đang đăng ký...' : 'Đăng ký khóa học'}
+                </button>
+              )}
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between py-2 border-b border-custom">
@@ -240,19 +269,7 @@ const CourseDetails = () => {
                     <svg className="w-4 h-4 text-success mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Áp dụng vào thực tế
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <svg className="w-4 h-4 text-success mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Hoàn thành các dự án
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <svg className="w-4 h-4 text-success mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Nhận chứng chỉ hoàn thành
+                    Áp dụng vào dự án thực tế
                   </li>
                 </ul>
               </div>

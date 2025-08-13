@@ -3,6 +3,9 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 if (!process.env.JWT_SECRET) {
@@ -13,6 +16,58 @@ if (!process.env.JWT_SECRET) {
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Tạo thư mục uploads nếu chưa có
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Serve static files từ thư mục uploads
+app.use('/uploads', express.static(uploadsDir));
+
+// Cấu hình multer để upload file
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    // Tạo tên file unique với timestamp
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const fileFilter = (req, file, cb) => {
+  // Chỉ cho phép các loại file được hỗ trợ
+  const allowedTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'video/mp4',
+    'video/avi',
+    'video/mov',
+    'video/wmv',
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif'
+  ];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('File type not supported'), false);
+  }
+};
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 100 * 1024 * 1024 // 100MB limit
+  }
+});
 
 const db = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -220,6 +275,46 @@ app.post('/api/enrollments', authenticateToken, async (req, res) => {
   }
 });
 
+// Xóa khóa học
+app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
+  const courseId = req.params.id;
+
+  try {
+    // Kiểm tra quyền: chỉ giảng viên tạo khóa học mới được xóa
+    const [course] = await db.query('SELECT * FROM Courses WHERE id = ?', [courseId]);
+    if (course.length === 0) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+    if (req.user.role !== 'instructor' || course[0].instructor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Lấy danh sách file để xóa
+    const [lessons] = await db.query('SELECT file_url FROM Lesson WHERE course_id = ? AND file_url IS NOT NULL', [courseId]);
+    
+    // Xóa các file trên server
+    for (const lesson of lessons) {
+      if (lesson.file_url) {
+        const filePath = path.join(__dirname, 'uploads', path.basename(lesson.file_url));
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    }
+
+    // Xóa các bài học trước (tránh lỗi ràng buộc khóa ngoại)
+    await db.query('DELETE FROM Lesson WHERE course_id = ?', [courseId]);
+
+    // Xóa khóa học
+    await db.query('DELETE FROM Courses WHERE id = ?', [courseId]);
+
+    res.json({ message: 'Course deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting course:', error);
+    res.status(500).json({ message: 'Error deleting course' });
+  }
+});
+
 // Entertainment endpoints
 app.get('/api/entertainment', async (req, res) => {
   try {
@@ -286,15 +381,64 @@ app.post('/api/courses/:id/lessons', authenticateToken, async (req, res) => {
   if (req.user.role !== 'instructor') return res.status(403).json({ message: 'Access denied' });
   const courseId = req.params.id;
   const { title, description, pdf_url, youtube_url } = req.body;
+  
   try {
+    // Kiểm tra khóa học có tồn tại và thuộc về instructor này không
+    const [course] = await db.query('SELECT * FROM Courses WHERE id = ? AND instructor_id = ?', [courseId, req.user.id]);
+    if (course.length === 0) {
+      return res.status(403).json({ message: 'Course not found or access denied' });
+    }
+
     await db.query(
       'INSERT INTO Lesson (course_id, title, description, pdf_url, youtube_url) VALUES (?, ?, ?, ?, ?)',
-      [courseId, title, description, pdf_url, youtube_url]
+      [courseId, title, description, pdf_url || null, youtube_url || null]
     );
     res.status(201).json({ message: 'Lesson added to course' });
   } catch (error) {
     console.error('Error adding lesson:', error);
     res.status(500).json({ message: 'Error adding lesson to course' });
+  }
+});
+
+// Upload file và tạo bài học
+app.post('/api/courses/:id/lessons/upload', authenticateToken, upload.single('file'), async (req, res) => {
+  if (req.user.role !== 'instructor') return res.status(403).json({ message: 'Access denied' });
+  
+  const courseId = req.params.id;
+  const { title, description, youtube_url } = req.body;
+  
+  try {
+    // Kiểm tra khóa học có tồn tại và thuộc về instructor này không
+    const [course] = await db.query('SELECT * FROM Courses WHERE id = ? AND instructor_id = ?', [courseId, req.user.id]);
+    if (course.length === 0) {
+      return res.status(403).json({ message: 'Course not found or access denied' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Tạo URL cho file
+    const fileUrl = `/uploads/${req.file.filename}`;
+    
+    await db.query(
+      'INSERT INTO Lesson (course_id, title, description, file_url, youtube_url) VALUES (?, ?, ?, ?, ?)',
+      [courseId, title, description || '', fileUrl, youtube_url || null]
+    );
+    
+    res.status(201).json({ 
+      message: 'Lesson with file uploaded successfully',
+      file_url: fileUrl 
+    });
+  } catch (error) {
+    console.error('Error uploading lesson file:', error);
+    // Xóa file nếu có lỗi
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error deleting file:', err);
+      });
+    }
+    res.status(500).json({ message: 'Error uploading lesson file' });
   }
 });
 
@@ -310,6 +454,108 @@ app.get('/api/courses/:id/lessons', async (req, res) => {
   } catch (error) {
     console.error('Error fetching lessons:', error);
     res.status(500).json({ message: 'Error fetching lessons' });
+  }
+});
+
+// Cập nhật bài học
+app.put('/api/lessons/:id', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'instructor') return res.status(403).json({ message: 'Access denied' });
+  
+  const lessonId = req.params.id;
+  const { title, description, pdf_url, youtube_url } = req.body;
+  
+  try {
+    // Kiểm tra quyền sở hữu bài học
+    const [lesson] = await db.query(`
+      SELECT l.*, c.instructor_id 
+      FROM Lesson l 
+      JOIN Courses c ON l.course_id = c.id 
+      WHERE l.id = ?
+    `, [lessonId]);
+    
+    if (lesson.length === 0) {
+      return res.status(404).json({ message: 'Lesson not found' });
+    }
+    
+    if (lesson[0].instructor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    await db.query(
+      'UPDATE Lesson SET title = ?, description = ?, pdf_url = ?, youtube_url = ? WHERE id = ?',
+      [title, description || '', pdf_url || null, youtube_url || null, lessonId]
+    );
+    
+    res.json({ message: 'Lesson updated successfully' });
+  } catch (error) {
+    console.error('Error updating lesson:', error);
+    res.status(500).json({ message: 'Error updating lesson' });
+  }
+});
+
+// Xóa bài học
+app.delete('/api/lessons/:id', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'instructor') return res.status(403).json({ message: 'Access denied' });
+  
+  const lessonId = req.params.id;
+  
+  try {
+    // Kiểm tra quyền sở hữu bài học và lấy file_url
+    const [lesson] = await db.query(`
+      SELECT l.*, c.instructor_id 
+      FROM Lesson l 
+      JOIN Courses c ON l.course_id = c.id 
+      WHERE l.id = ?
+    `, [lessonId]);
+    
+    if (lesson.length === 0) {
+      return res.status(404).json({ message: 'Lesson not found' });
+    }
+    
+    if (lesson[0].instructor_id !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Xóa file trên server nếu có
+    if (lesson[0].file_url) {
+      const filePath = path.join(__dirname, 'uploads', path.basename(lesson[0].file_url));
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+    
+    await db.query('DELETE FROM Lesson WHERE id = ?', [lessonId]);
+    
+    res.json({ message: 'Lesson deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting lesson:', error);
+    res.status(500).json({ message: 'Error deleting lesson' });
+  }
+});
+
+// Sắp xếp lại thứ tự bài học
+app.post('/api/courses/:id/lessons/reorder', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'instructor') return res.status(403).json({ message: 'Access denied' });
+  
+  const courseId = req.params.id;
+  const { lessons } = req.body; // Array of lesson IDs in new order
+  
+  try {
+    // Kiểm tra quyền sở hữu khóa học
+    const [course] = await db.query('SELECT * FROM Courses WHERE id = ? AND instructor_id = ?', [courseId, req.user.id]);
+    if (course.length === 0) {
+      return res.status(403).json({ message: 'Course not found or access denied' });
+    }
+    
+    // Cập nhật thứ tự cho từng bài học
+    for (let i = 0; i < lessons.length; i++) {
+      await db.query('UPDATE Lesson SET order_index = ? WHERE id = ? AND course_id = ?', [i, lessons[i], courseId]);
+    }
+    
+    res.json({ message: 'Lessons reordered successfully' });
+  } catch (error) {
+    console.error('Error reordering lessons:', error);
+    res.status(500).json({ message: 'Error reordering lessons' });
   }
 });
 
